@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Dashboard i-TAKAK V2</title>
+
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Dashboard i-TAKAK V2</h1>
+      <p>Monitoring volume bak sampah botol plastik berbasis ESP32, Firebase, Google Sheet, dan GitHub Pages</p>
+    </header>
+
+    <section class="status-grid">
+      <div class="card main-card">
+        <h3>Volume Bak Sampah</h3>
+        <p id="volumeValue">--%</p>
+        <div class="progress">
+          <div id="volumeBar"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Status Perangkat</h3>
+        <p id="onlineStatus">--</p>
+        <small id="lastSeen">Last seen: --</small>
+      </div>
+
+      <div class="card">
+        <h3>Rata-rata Jarak</h3>
+        <p id="avgDistance">-- cm</p>
+      </div>
+
+      <div class="card">
+        <h3>Relay</h3>
+        <p id="relayStatus">--</p>
+      </div>
+    </section>
+
+    <section class="info-grid">
+      <div class="info-box">
+        <strong>Sensor 1:</strong> <span id="sensor1Value">-- cm</span>
+      </div>
+
+      <div class="info-box">
+        <strong>Sensor 2:</strong> <span id="sensor2Value">-- cm</span>
+      </div>
+
+      <div class="info-box">
+        <strong>Update:</strong> <span id="timestampValue">--</span>
+      </div>
+
+      <div class="info-box">
+        <strong>Device ID:</strong> <span id="deviceIdValue">--</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Grafik 100 Data Terakhir</h2>
+      <p>Grafik cepat dari Firebase history hari ini.</p>
+      <canvas id="realtimeChart"></canvas>
+    </section>
+
+    <section class="panel">
+      <h2>Grafik Historis Volume</h2>
+      <p>Atur rentang data dan agregasi grafik berdasarkan jam, hari, minggu, atau bulan.</p>
+
+      <div class="form-row">
+        <label>
+          Mulai
+          <input type="date" id="startDate" />
+        </label>
+
+        <label>
+          Selesai
+          <input type="date" id="endDate" />
+        </label>
+
+        <label>
+          Agregasi
+          <select id="groupSelect">
+            <option value="hour">Per Jam</option>
+            <option value="day">Per Hari</option>
+            <option value="week">Per Minggu</option>
+            <option value="month">Per Bulan</option>
+          </select>
+        </label>
+
+        <button id="loadHistoryBtn">Tampilkan</button>
+      </div>
+
+      <p id="historyStatus">Belum ada data historis dimuat.</p>
+
+      <canvas id="historyChart"></canvas>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Periode</th>
+              <th>Rata-rata Volume</th>
+              <th>Maksimum</th>
+              <th>Minimum</th>
+              <th>Jumlah Data</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody">
+            <tr>
+              <td colspan="5">Belum ada data.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer>
+      <p>i-TAKAK V2 | Monitoring jarak jauh bak sampah botol plastik</p>
+    </footer>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
