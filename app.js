@@ -24,7 +24,8 @@ const firebaseConfig = {
 
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz7SbogAnxxYpUAxg9AKqyAEwrLgCg8tAwlhBKeBiCrqAPzCO6EPLpsqhr9TS5XSro/exec";
 
-const OFFLINE_THRESHOLD_MS = 90000;
+const OFFLINE_THRESHOLD_MS = 30000; // 30 detik tanpa update = offline
+let latestDeviceData = null;
 
 // =====================================================
 // FIREBASE INIT
@@ -129,15 +130,26 @@ const historyChart = new Chart(
 // =====================================================
 // FIREBASE LATEST
 // =====================================================
+setInterval(() => {
+  if (latestDeviceData) {
+    updateOnlineStatus(latestDeviceData);
+  } else {
+    setDeviceOffline("Belum ada data perangkat.");
+  }
+}, 5000);
+
 const latestRef = ref(database, `itakak_v2/devices/${DEVICE_ID}/latest`);
 
 onValue(latestRef, (snapshot) => {
   const data = snapshot.val();
 
   if (!data) {
+    latestDeviceData = null;
+    setDeviceOffline("Belum ada data perangkat.");
     return;
   }
 
+  latestDeviceData = data;
   updateLatestCards(data);
 });
 
@@ -175,7 +187,11 @@ function updateOnlineStatus(data) {
   const now = Date.now();
   const delta = now - epoch;
 
-  if (epoch > 0 && delta <= OFFLINE_THRESHOLD_MS) {
+  // Perangkat dianggap online hanya jika:
+  // 1. epoch_ms valid
+  // 2. waktu data tidak berada di masa depan
+  // 3. selisih waktu masih di bawah batas offline
+  if (epoch > 0 && delta >= 0 && delta <= OFFLINE_THRESHOLD_MS) {
     onlineStatus.textContent = "ONLINE";
     onlineStatus.className = "online";
   } else {
@@ -184,6 +200,12 @@ function updateOnlineStatus(data) {
   }
 
   lastSeen.textContent = "Last seen: " + (data.timestamp || "--");
+}
+
+function setDeviceOffline(message) {
+  onlineStatus.textContent = "OFFLINE";
+  onlineStatus.className = "offline";
+  lastSeen.textContent = message || "Last seen: --";
 }
 
 // =====================================================
