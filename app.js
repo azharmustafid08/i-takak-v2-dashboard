@@ -27,25 +27,31 @@ const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz7SbogAnxxYp
 const OFFLINE_THRESHOLD_MS = 30000; // 30 detik tanpa update = offline
 let latestDeviceData = null;
 
+// Estimasi kapasitas maksimum berat plastik dalam kg
+// Jika belum menggunakan loadcell, nilai ini hanya estimasi dari volume %
+const MAX_PLASTIC_WEIGHT_KG = 18;
+
 // =====================================================
-// FIREBASE INIT
+// 2. INISIALISASI FIREBASE
 // =====================================================
+
 const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
 
 // =====================================================
-// ELEMENT
+// 3. ELEMEN HTML
 // =====================================================
-//const volumeValue = document.getElementById("volumeValue");
-//const volumeBar = document.getElementById("volumeBar");
+
 const volumeValue = document.getElementById("volumeValue");
 const circleProgress = document.getElementById("circleProgress");
 const volumeStatusText = document.getElementById("volumeStatusText");
+
 const plasticWeight = document.getElementById("plasticWeight");
 const weightStatus = document.getElementById("weightStatus");
 
 const onlineStatus = document.getElementById("onlineStatus");
 const lastSeen = document.getElementById("lastSeen");
+
 const avgDistance = document.getElementById("avgDistance");
 const relayStatus = document.getElementById("relayStatus");
 
@@ -58,19 +64,29 @@ const startDate = document.getElementById("startDate");
 const endDate = document.getElementById("endDate");
 const groupSelect = document.getElementById("groupSelect");
 const loadHistoryBtn = document.getElementById("loadHistoryBtn");
+
 const historyStatus = document.getElementById("historyStatus");
 const historyTableBody = document.getElementById("historyTableBody");
 
 // =====================================================
-// DEFAULT DATE
+// 4. DEFAULT TANGGAL
 // =====================================================
+
 const today = getTodayDateString();
-startDate.value = today;
-endDate.value = today;
+
+if (startDate) startDate.value = today;
+if (endDate) endDate.value = today;
 
 // =====================================================
-// CHART REALTIME
+// 5. VARIABEL STATUS PERANGKAT
 // =====================================================
+
+let latestDeviceData = null;
+
+// =====================================================
+// 6. CHART 100 DATA TERAKHIR FIREBASE
+// =====================================================
+
 const realtimeChart = new Chart(
   document.getElementById("realtimeChart"),
   {
@@ -80,17 +96,34 @@ const realtimeChart = new Chart(
       datasets: [
         {
           label: "Volume (%)",
-          data: []
+          data: [],
+          borderWidth: 2,
+          tension: 0.35
         },
         {
           label: "Rata-rata Jarak (cm)",
-          data: []
+          data: [],
+          borderWidth: 2,
+          tension: 0.35
         }
       ]
     },
     options: {
       responsive: true,
       animation: false,
+      interaction: {
+        mode: "index",
+        intersect: false
+      },
+      plugins: {
+        legend: {
+          display: true,
+          position: "bottom"
+        },
+        tooltip: {
+          enabled: true
+        }
+      },
       scales: {
         y: {
           beginAtZero: true
@@ -100,8 +133,139 @@ const realtimeChart = new Chart(
   }
 );
 
-// circle
-//
+// =====================================================
+// 7. CHART HISTORIS GOOGLE SHEET
+// =====================================================
+
+const historyChart = new Chart(
+  document.getElementById("historyChart"),
+  {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: "Rata-rata Volume (%)",
+          data: [],
+          borderWidth: 2,
+          tension: 0.35
+        },
+        {
+          label: "Maksimum Volume (%)",
+          data: [],
+          borderWidth: 2,
+          tension: 0.35
+        },
+        {
+          label: "Minimum Volume (%)",
+          data: [],
+          borderWidth: 2,
+          tension: 0.35
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      interaction: {
+        mode: "index",
+        intersect: false
+      },
+      plugins: {
+        legend: {
+          display: true,
+          position: "bottom"
+        },
+        tooltip: {
+          enabled: true
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          suggestedMax: 100
+        }
+      }
+    }
+  }
+);
+
+// =====================================================
+// 8. FIREBASE LATEST - DATA REALTIME
+// =====================================================
+
+const latestRef = ref(database, `itakak_v2/devices/${DEVICE_ID}/latest`);
+
+onValue(latestRef, (snapshot) => {
+  const data = snapshot.val();
+
+  if (!data) {
+    latestDeviceData = null;
+    setDeviceOffline("Belum ada data perangkat.");
+    return;
+  }
+
+  latestDeviceData = data;
+  updateLatestCards(data);
+});
+
+// Cek ulang status online/offline setiap 5 detik
+// Ini penting karena saat ESP32 mati, Firebase tidak otomatis mengubah status.
+setInterval(() => {
+  if (latestDeviceData) {
+    updateOnlineStatus(latestDeviceData);
+  } else {
+    setDeviceOffline("Belum ada data perangkat.");
+  }
+}, 5000);
+
+// =====================================================
+// 9. UPDATE KARTU UTAMA DASHBOARD
+// =====================================================
+
+function updateLatestCards(data) {
+  const volume = toNumber(data.volume_percent, 0);
+  const distance = toNumber(data.average_distance_cm, 0);
+
+  updateCircleProgress(volume);
+
+  if (plasticWeight) {
+    plasticWeight.textContent = estimatePlasticWeight(volume);
+  }
+
+  updateWeightBadge(volume);
+
+  if (avgDistance) {
+    avgDistance.textContent = distance.toFixed(2) + " cm";
+  }
+
+  if (relayStatus) {
+    relayStatus.textContent = data.relay || "--";
+  }
+
+  if (sensor1Value) {
+    sensor1Value.textContent = formatCm(data.sensor1_cm);
+  }
+
+  if (sensor2Value) {
+    sensor2Value.textContent = formatCm(data.sensor2_cm);
+  }
+
+  if (timestampValue) {
+    timestampValue.textContent = data.timestamp || "--";
+  }
+
+  if (deviceIdValue) {
+    deviceIdValue.textContent = data.device_id || DEVICE_ID;
+  }
+
+  updateOnlineStatus(data);
+}
+
+// =====================================================
+// 10. CIRCLE PROGRESS VOLUME
+// =====================================================
+
 function updateCircleProgress(volume) {
   const safeVolume = Math.max(0, Math.min(100, Number(volume) || 0));
   const degree = safeVolume * 3.6;
@@ -120,122 +284,56 @@ function updateCircleProgress(volume) {
     statusText = "Hampir Penuh";
   }
 
-  circleProgress.style.background =
-    `conic-gradient(${progressColor} ${degree}deg, #dce7dc ${degree}deg)`;
+  if (circleProgress) {
+    circleProgress.style.background =
+      `conic-gradient(${progressColor} ${degree}deg, #dce7dc ${degree}deg)`;
+  }
 
-  volumeValue.textContent = safeVolume.toFixed(0) + "%";
+  if (volumeValue) {
+    volumeValue.textContent = safeVolume.toFixed(0) + "%";
+  }
 
-  volumeStatusText.textContent = statusText;
-  volumeStatusText.className = `badge ${badgeClass}`;
+  if (volumeStatusText) {
+    volumeStatusText.textContent = statusText;
+    volumeStatusText.className = `badge ${badgeClass}`;
+  }
 }
 
-// estimasi berat sampah
-function estimatePlasticWeight(volumePercent) {
-  const maxWeightKg = 18; 
-  const estimated = (Number(volumePercent) / 100) * maxWeightKg;
-  return estimated.toFixed(1) + " kg";
-}
+function updateWeightBadge(volume) {
+  if (!weightStatus) return;
 
+  const safeVolume = Math.max(0, Math.min(100, Number(volume) || 0));
 
-
-// =====================================================
-// CHART HISTORY
-// =====================================================
-const historyChart = new Chart(
-  document.getElementById("historyChart"),
-  {
-    type: "line",
-    data: {
-      labels: [],
-      datasets: [
-        {
-          label: "Rata-rata Volume (%)",
-          data: []
-        },
-        {
-          label: "Maksimum Volume (%)",
-          data: []
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      animation: false,
-      scales: {
-        y: {
-          beginAtZero: true,
-          max: 100
-        }
-      }
-    }
-  }
-);
-
-// =====================================================
-// FIREBASE LATEST
-// =====================================================
-setInterval(() => {
-  if (latestDeviceData) {
-    updateOnlineStatus(latestDeviceData);
-  } else {
-    setDeviceOffline("Belum ada data perangkat.");
-  }
-}, 5000);
-
-const latestRef = ref(database, `itakak_v2/devices/${DEVICE_ID}/latest`);
-
-onValue(latestRef, (snapshot) => {
-  const data = snapshot.val();
-
-  if (!data) {
-    latestDeviceData = null;
-    setDeviceOffline("Belum ada data perangkat.");
-    return;
-  }
-
-  latestDeviceData = data;
-  updateLatestCards(data);
-});
-
-function updateLatestCards(data) {
-  const volume = Number(data.volume_percent || 0);
-  const distance = Number(data.average_distance_cm || 0);
-
-  updateCircleProgress(volume);
-
-  plasticWeight.textContent = estimatePlasticWeight(volume);
-
-  if (volume >= 90) {
+  if (safeVolume >= 90) {
     weightStatus.textContent = "Penuh";
     weightStatus.className = "badge full";
-  } else if (volume >= 75) {
+  } else if (safeVolume >= 75) {
     weightStatus.textContent = "Hampir Penuh";
     weightStatus.className = "badge warning";
   } else {
     weightStatus.textContent = "Normal";
     weightStatus.className = "badge normal";
   }
-
-  avgDistance.textContent = distance.toFixed(2) + " cm";
-  relayStatus.textContent = data.relay || "--";
-
-  sensor1Value.textContent = formatCm(data.sensor1_cm);
-  sensor2Value.textContent = formatCm(data.sensor2_cm);
-  timestampValue.textContent = data.timestamp || "--";
-  deviceIdValue.textContent = data.device_id || DEVICE_ID;
-
-  updateOnlineStatus(data);
 }
 
+function estimatePlasticWeight(volumePercent) {
+  const volume = Math.max(0, Math.min(100, Number(volumePercent) || 0));
+  const estimated = (volume / 100) * MAX_PLASTIC_WEIGHT_KG;
+
+  return estimated.toFixed(1) + " kg";
+}
+
+// =====================================================
+// 11. STATUS ONLINE / OFFLINE
+// =====================================================
+
 function updateOnlineStatus(data) {
+  if (!onlineStatus || !lastSeen) return;
+
   const epoch = Number(data.epoch_ms || 0);
   const now = Date.now();
   const delta = now - epoch;
 
-  // Perangkat dianggap online hanya jika:
-  // 1. epoch_ms valid
-  // 2. waktu data tidak berada di masa depan
-  // 3. selisih waktu masih di bawah batas offline
   if (epoch > 0 && delta >= 0 && delta <= OFFLINE_THRESHOLD_MS) {
     onlineStatus.textContent = "ONLINE";
     onlineStatus.className = "online";
@@ -248,62 +346,96 @@ function updateOnlineStatus(data) {
 }
 
 function setDeviceOffline(message) {
-  onlineStatus.textContent = "OFFLINE";
-  onlineStatus.className = "offline";
-  lastSeen.textContent = message || "Last seen: --";
+  if (onlineStatus) {
+    onlineStatus.textContent = "OFFLINE";
+    onlineStatus.className = "offline";
+  }
+
+  if (lastSeen) {
+    lastSeen.textContent = message || "Last seen: --";
+  }
 }
 
 // =====================================================
-// FIREBASE 100 DATA TERAKHIR
+// 12. FIREBASE HISTORY - 100 DATA TERAKHIR
 // =====================================================
-function listenRealtimeHistory() {
-  const today = getTodayDateString();
 
-  const historyRef = ref(database, `itakak_v2/devices/${DEVICE_ID}/history/${today}`);
+function listenRealtimeHistory() {
+  const todayDate = getTodayDateString();
+
+  const historyRef = ref(
+    database,
+    `itakak_v2/devices/${DEVICE_ID}/history/${todayDate}`
+  );
+
   const last100Query = query(historyRef, limitToLast(100));
 
   onValue(last100Query, (snapshot) => {
     const data = snapshot.val();
 
     if (!data) {
-      realtimeChart.data.labels = [];
-      realtimeChart.data.datasets[0].data = [];
-      realtimeChart.data.datasets[1].data = [];
-      realtimeChart.update();
+      clearRealtimeChart();
       return;
     }
 
     const rows = Object.values(data);
 
-    rows.sort((a, b) => Number(a.epoch_ms || 0) - Number(b.epoch_ms || 0));
+    rows.sort((a, b) => {
+      return Number(a.epoch_ms || 0) - Number(b.epoch_ms || 0);
+    });
 
-    realtimeChart.data.labels = rows.map(row => row.time || row.timestamp || "");
-    realtimeChart.data.datasets[0].data = rows.map(row => Number(row.volume_percent || 0));
-    realtimeChart.data.datasets[1].data = rows.map(row => Number(row.average_distance_cm || 0));
+    const labels = rows.map(row => row.time || row.timestamp || "");
+    const volumeData = rows.map(row => toNumber(row.volume_percent, 0));
+    const distanceData = rows.map(row => toNumber(row.average_distance_cm, 0));
+
+    realtimeChart.data.labels = labels;
+    realtimeChart.data.datasets[0].data = volumeData;
+    realtimeChart.data.datasets[1].data = distanceData;
     realtimeChart.update();
   });
+}
+
+function clearRealtimeChart() {
+  realtimeChart.data.labels = [];
+  realtimeChart.data.datasets[0].data = [];
+  realtimeChart.data.datasets[1].data = [];
+  realtimeChart.update();
 }
 
 listenRealtimeHistory();
 
 // =====================================================
-// GOOGLE SHEET HISTORY
+// 13. GOOGLE SHEET - DATA HISTORIS
 // =====================================================
-loadHistoryBtn.addEventListener("click", () => {
-  loadHistoricalData();
-});
+
+if (loadHistoryBtn) {
+  loadHistoryBtn.addEventListener("click", () => {
+    loadHistoricalData();
+  });
+}
 
 async function loadHistoricalData() {
-  const start = startDate.value;
-  const end = endDate.value;
-  const group = groupSelect.value;
+  const start = startDate ? startDate.value : "";
+  const end = endDate ? endDate.value : "";
+  const group = groupSelect ? groupSelect.value : "hour";
 
   if (!start || !end) {
-    historyStatus.textContent = "Tanggal mulai dan selesai wajib diisi.";
+    if (historyStatus) {
+      historyStatus.textContent = "Tanggal mulai dan selesai wajib diisi.";
+    }
     return;
   }
 
-  historyStatus.textContent = "Mengambil data historis...";
+  if (start > end) {
+    if (historyStatus) {
+      historyStatus.textContent = "Tanggal mulai tidak boleh lebih besar dari tanggal selesai.";
+    }
+    return;
+  }
+
+  if (historyStatus) {
+    historyStatus.textContent = "Mengambil data historis...";
+  }
 
   const url =
     GOOGLE_SCRIPT_URL +
@@ -316,29 +448,51 @@ async function loadHistoricalData() {
       throw new Error(result.message || "Gagal mengambil data.");
     }
 
-    updateHistoryChart(result.data || []);
-    updateHistoryTable(result.data || []);
+    const rows = result.data || [];
 
-    historyStatus.textContent =
-      `Data berhasil dimuat. Jumlah periode: ${result.count}. Agregasi: ${group}.`;
+    updateHistoryChart(rows);
+    updateHistoryTable(rows);
+
+    if (historyStatus) {
+      historyStatus.textContent =
+        `Data berhasil dimuat. Jumlah periode: ${result.count}. Agregasi: ${labelGroup(group)}.`;
+    }
 
   } catch (error) {
-    historyStatus.textContent = "Gagal mengambil data: " + error.message;
+    if (historyStatus) {
+      historyStatus.textContent = "Gagal mengambil data: " + error.message;
+    }
+
     clearHistory();
   }
 }
 
+// Load default data hari ini setelah halaman dibuka
+loadHistoricalData();
+
+// =====================================================
+// 14. UPDATE CHART HISTORIS
+// =====================================================
+
 function updateHistoryChart(rows) {
-  historyChart.data.labels = rows.map(row => row.bucket);
-  historyChart.data.datasets[0].data = rows.map(row => Number(row.avg_volume_percent || 0));
-  historyChart.data.datasets[1].data = rows.map(row => Number(row.max_volume_percent || 0));
+  const labels = rows.map(row => row.bucket || "");
+  const avgVolume = rows.map(row => toNumber(row.avg_volume_percent, 0));
+  const maxVolume = rows.map(row => toNumber(row.max_volume_percent, 0));
+  const minVolume = rows.map(row => toNumber(row.min_volume_percent, 0));
+
+  historyChart.data.labels = labels;
+  historyChart.data.datasets[0].data = avgVolume;
+  historyChart.data.datasets[1].data = maxVolume;
+  historyChart.data.datasets[2].data = minVolume;
   historyChart.update();
 }
 
 function updateHistoryTable(rows) {
+  if (!historyTableBody) return;
+
   historyTableBody.innerHTML = "";
 
-  if (!rows.length) {
+  if (!rows || rows.length === 0) {
     historyTableBody.innerHTML = `
       <tr>
         <td colspan="5">Tidak ada data pada rentang tersebut.</td>
@@ -351,11 +505,11 @@ function updateHistoryTable(rows) {
     const tr = document.createElement("tr");
 
     tr.innerHTML = `
-      <td>${row.bucket}</td>
-      <td>${row.avg_volume_percent}%</td>
-      <td>${row.max_volume_percent}%</td>
-      <td>${row.min_volume_percent}%</td>
-      <td>${row.count}</td>
+      <td>${row.bucket || ""}</td>
+      <td>${formatPercent(row.avg_volume_percent)}</td>
+      <td>${formatPercent(row.max_volume_percent)}</td>
+      <td>${formatPercent(row.min_volume_percent)}</td>
+      <td>${row.count || 0}</td>
     `;
 
     historyTableBody.appendChild(tr);
@@ -366,18 +520,22 @@ function clearHistory() {
   historyChart.data.labels = [];
   historyChart.data.datasets[0].data = [];
   historyChart.data.datasets[1].data = [];
+  historyChart.data.datasets[2].data = [];
   historyChart.update();
 
-  historyTableBody.innerHTML = `
-    <tr>
-      <td colspan="5">Data tidak tersedia.</td>
-    </tr>
-  `;
+  if (historyTableBody) {
+    historyTableBody.innerHTML = `
+      <tr>
+        <td colspan="5">Data tidak tersedia.</td>
+      </tr>
+    `;
+  }
 }
 
 // =====================================================
-// JSONP HELPER
+// 15. JSONP HELPER UNTUK GOOGLE APPS SCRIPT
 // =====================================================
+
 function loadJsonp(url) {
   return new Promise((resolve, reject) => {
     const callbackName =
@@ -392,10 +550,16 @@ function loadJsonp(url) {
     const separator = url.includes("?") ? "&" : "?";
     const script = document.createElement("script");
 
-    script.src = url + separator + "callback=" + callbackName;
+    script.src =
+      url +
+      separator +
+      "callback=" +
+      callbackName +
+      "&_=" +
+      Date.now();
 
     script.onerror = function() {
-      reject(new Error("Gagal memuat data Google Apps Script."));
+      reject(new Error("Gagal memuat data dari Google Apps Script."));
       delete window[callbackName];
       script.remove();
     };
@@ -405,8 +569,9 @@ function loadJsonp(url) {
 }
 
 // =====================================================
-// HELPER
+// 16. HELPER FORMAT DATA
 // =====================================================
+
 function formatCm(value) {
   if (value === null || value === undefined || value === "") {
     return "ERROR";
@@ -421,6 +586,30 @@ function formatCm(value) {
   return number.toFixed(2) + " cm";
 }
 
+function formatPercent(value) {
+  if (value === null || value === undefined || value === "") {
+    return "--";
+  }
+
+  const number = Number(value);
+
+  if (Number.isNaN(number)) {
+    return "--";
+  }
+
+  return number.toFixed(2) + "%";
+}
+
+function toNumber(value, fallback = 0) {
+  const number = Number(value);
+
+  if (Number.isNaN(number)) {
+    return fallback;
+  }
+
+  return number;
+}
+
 function getTodayDateString() {
   const now = new Date();
 
@@ -431,5 +620,11 @@ function getTodayDateString() {
   return `${year}-${month}-${day}`;
 }
 
-// Load default historical graph today per hour
-loadHistoricalData();
+function labelGroup(group) {
+  if (group === "hour") return "Per Jam";
+  if (group === "day") return "Per Hari";
+  if (group === "week") return "Per Minggu";
+  if (group === "month") return "Per Bulan";
+
+  return group;
+}
