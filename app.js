@@ -8,7 +8,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 
 // =====================================================
-// KONFIGURASI
+// KONFIGURASI DASHBOARD i-TAKAK V2
 // =====================================================
 const DEVICE_ID = "device_001";
 
@@ -24,72 +24,90 @@ const firebaseConfig = {
 
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz7SbogAnxxYpUAxg9AKqyAEwrLgCg8tAwlhBKeBiCrqAPzCO6EPLpsqhr9TS5XSro/exec";
 
-const OFFLINE_THRESHOLD_MS = 30000; // 30 detik tanpa update = offline
-let latestDeviceData = null;
+// Perangkat dianggap OFFLINE jika tidak ada update selama 30 detik.
+// Jika jaringan lambat, ubah menjadi 60000 atau 90000.
+const OFFLINE_THRESHOLD_MS = 30000;
 
-// Estimasi kapasitas maksimum berat plastik dalam kg
-// Jika belum menggunakan loadcell, nilai ini hanya estimasi dari volume %
+// Estimasi berat maksimum plastik dalam bak.
+// Ini hanya estimasi dari persentase volume jika belum memakai loadcell.
 const MAX_PLASTIC_WEIGHT_KG = 18;
 
-// =====================================================
-// 2. INISIALISASI FIREBASE
-// =====================================================
+// Path Firebase yang digunakan program ESP32 V2
+const FIREBASE_LATEST_PATH = `itakak_v2/devices/${DEVICE_ID}/latest`;
+const FIREBASE_HISTORY_PATH = `itakak_v2/devices/${DEVICE_ID}/history`;
 
+// =====================================================
+// INISIALISASI FIREBASE
+// =====================================================
 const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
 
 // =====================================================
-// 3. ELEMEN HTML
+// HELPER AMBIL ELEMEN HTML
 // =====================================================
+function $(id) {
+  return document.getElementById(id);
+}
 
-const volumeValue = document.getElementById("volumeValue");
-const circleProgress = document.getElementById("circleProgress");
-const volumeStatusText = document.getElementById("volumeStatusText");
+function getFirstElement(ids) {
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (el) return el;
+  }
+  return null;
+}
 
-const plasticWeight = document.getElementById("plasticWeight");
-const weightStatus = document.getElementById("weightStatus");
+// Elemen utama dashboard
+const volumeValue = getFirstElement(["volumeValue", "averageValue"]);
+const circleProgress = $("circleProgress");
+const volumeStatusText = $("volumeStatusText");
 
-const onlineStatus = document.getElementById("onlineStatus");
-const lastSeen = document.getElementById("lastSeen");
+const plasticWeight = $("plasticWeight");
+const weightStatus = $("weightStatus");
 
-const avgDistance = document.getElementById("avgDistance");
-const relayStatus = document.getElementById("relayStatus");
+const onlineStatus = $("onlineStatus");
+const lastSeen = $("lastSeen");
 
-const sensor1Value = document.getElementById("sensor1Value");
-const sensor2Value = document.getElementById("sensor2Value");
-const timestampValue = document.getElementById("timestampValue");
-const deviceIdValue = document.getElementById("deviceIdValue");
+const avgDistance = $("avgDistance");
+const relayStatus = getFirstElement(["relayStatus", "relayValue"]);
 
-const startDate = document.getElementById("startDate");
-const endDate = document.getElementById("endDate");
-const groupSelect = document.getElementById("groupSelect");
-const loadHistoryBtn = document.getElementById("loadHistoryBtn");
+const sensor1Value = getFirstElement(["sensor1Value", "sensor1"]);
+const sensor2Value = getFirstElement(["sensor2Value", "sensor2"]);
+const timestampValue = $("timestampValue");
+const deviceIdValue = $("deviceIdValue");
 
-const historyStatus = document.getElementById("historyStatus");
-const historyTableBody = document.getElementById("historyTableBody");
+const startDate = $("startDate");
+const endDate = $("endDate");
+const groupSelect = $("groupSelect");
+const loadHistoryBtn = $("loadHistoryBtn");
+
+const historyStatus = $("historyStatus");
+const historyTableBody = $("historyTableBody");
+
+// Canvas grafik
+const realtimeCanvas = getFirstElement(["realtimeChart", "firebaseHistoryChart"]);
+const historyCanvas = getFirstElement(["historyChart", "sheetHistoryChart"]);
 
 // =====================================================
-// 4. DEFAULT TANGGAL
+// DEFAULT TANGGAL
 // =====================================================
-
 const today = getTodayDateString();
 
 if (startDate) startDate.value = today;
 if (endDate) endDate.value = today;
 
 // =====================================================
-// 5. VARIABEL STATUS PERANGKAT
+// VARIABEL STATUS PERANGKAT
 // =====================================================
-
 let latestDeviceData = null;
 
 // =====================================================
-// 6. CHART 100 DATA TERAKHIR FIREBASE
+// CHART FIREBASE 100 DATA TERAKHIR
 // =====================================================
+let realtimeChart = null;
 
-const realtimeChart = new Chart(
-  document.getElementById("realtimeChart"),
-  {
+if (realtimeCanvas && typeof Chart !== "undefined") {
+  realtimeChart = new Chart(realtimeCanvas, {
     type: "line",
     data: {
       labels: [],
@@ -119,9 +137,6 @@ const realtimeChart = new Chart(
         legend: {
           display: true,
           position: "bottom"
-        },
-        tooltip: {
-          enabled: true
         }
       },
       scales: {
@@ -130,16 +145,16 @@ const realtimeChart = new Chart(
         }
       }
     }
-  }
-);
+  });
+}
 
 // =====================================================
-// 7. CHART HISTORIS GOOGLE SHEET
+// CHART HISTORIS GOOGLE SHEET
 // =====================================================
+let historyChart = null;
 
-const historyChart = new Chart(
-  document.getElementById("historyChart"),
-  {
+if (historyCanvas && typeof Chart !== "undefined") {
+  historyChart = new Chart(historyCanvas, {
     type: "line",
     data: {
       labels: [],
@@ -175,9 +190,6 @@ const historyChart = new Chart(
         legend: {
           display: true,
           position: "bottom"
-        },
-        tooltip: {
-          enabled: true
         }
       },
       scales: {
@@ -187,17 +199,18 @@ const historyChart = new Chart(
         }
       }
     }
-  }
-);
+  });
+}
 
 // =====================================================
-// 8. FIREBASE LATEST - DATA REALTIME
+// FIREBASE LATEST - DATA REALTIME
 // =====================================================
-
-const latestRef = ref(database, `itakak_v2/devices/${DEVICE_ID}/latest`);
+const latestRef = ref(database, FIREBASE_LATEST_PATH);
 
 onValue(latestRef, (snapshot) => {
   const data = snapshot.val();
+
+  console.log("Firebase latest:", data);
 
   if (!data) {
     latestDeviceData = null;
@@ -207,10 +220,13 @@ onValue(latestRef, (snapshot) => {
 
   latestDeviceData = data;
   updateLatestCards(data);
+}, (error) => {
+  console.error("Firebase latest error:", error);
+  setDeviceOffline("Gagal membaca Firebase.");
 });
 
-// Cek ulang status online/offline setiap 5 detik
-// Ini penting karena saat ESP32 mati, Firebase tidak otomatis mengubah status.
+// Cek ulang status online/offline setiap 5 detik.
+// Ini wajib, karena saat ESP32 mati, Firebase tidak otomatis mengubah data.
 setInterval(() => {
   if (latestDeviceData) {
     updateOnlineStatus(latestDeviceData);
@@ -220,9 +236,8 @@ setInterval(() => {
 }, 5000);
 
 // =====================================================
-// 9. UPDATE KARTU UTAMA DASHBOARD
+// UPDATE KARTU UTAMA
 // =====================================================
-
 function updateLatestCards(data) {
   const volume = toNumber(data.volume_percent, 0);
   const distance = toNumber(data.average_distance_cm, 0);
@@ -241,6 +256,12 @@ function updateLatestCards(data) {
 
   if (relayStatus) {
     relayStatus.textContent = data.relay || "--";
+
+    if (data.relay_status === true) {
+      relayStatus.className = "full-text";
+    } else {
+      relayStatus.className = "";
+    }
   }
 
   if (sensor1Value) {
@@ -263,9 +284,8 @@ function updateLatestCards(data) {
 }
 
 // =====================================================
-// 10. CIRCLE PROGRESS VOLUME
+// CIRCLE PROGRESS VOLUME
 // =====================================================
-
 function updateCircleProgress(volume) {
   const safeVolume = Math.max(0, Math.min(100, Number(volume) || 0));
   const degree = safeVolume * 3.6;
@@ -324,15 +344,20 @@ function estimatePlasticWeight(volumePercent) {
 }
 
 // =====================================================
-// 11. STATUS ONLINE / OFFLINE
+// STATUS ONLINE / OFFLINE
 // =====================================================
-
 function updateOnlineStatus(data) {
   if (!onlineStatus || !lastSeen) return;
 
   const epoch = Number(data.epoch_ms || 0);
   const now = Date.now();
   const delta = now - epoch;
+
+  console.log("Status check:", {
+    epoch_ms: epoch,
+    now: now,
+    delta: delta
+  });
 
   if (epoch > 0 && delta >= 0 && delta <= OFFLINE_THRESHOLD_MS) {
     onlineStatus.textContent = "ONLINE";
@@ -357,21 +382,26 @@ function setDeviceOffline(message) {
 }
 
 // =====================================================
-// 12. FIREBASE HISTORY - 100 DATA TERAKHIR
+// FIREBASE HISTORY - 100 DATA TERAKHIR HARI INI
 // =====================================================
-
 function listenRealtimeHistory() {
+  if (!realtimeChart) {
+    console.warn("Canvas realtimeChart tidak ditemukan.");
+    return;
+  }
+
   const todayDate = getTodayDateString();
+  const path = `${FIREBASE_HISTORY_PATH}/${todayDate}`;
 
-  const historyRef = ref(
-    database,
-    `itakak_v2/devices/${DEVICE_ID}/history/${todayDate}`
-  );
+  console.log("Firebase history path:", path);
 
+  const historyRef = ref(database, path);
   const last100Query = query(historyRef, limitToLast(100));
 
   onValue(last100Query, (snapshot) => {
     const data = snapshot.val();
+
+    console.log("Firebase history:", data);
 
     if (!data) {
       clearRealtimeChart();
@@ -392,10 +422,15 @@ function listenRealtimeHistory() {
     realtimeChart.data.datasets[0].data = volumeData;
     realtimeChart.data.datasets[1].data = distanceData;
     realtimeChart.update();
+  }, (error) => {
+    console.error("Firebase history error:", error);
+    clearRealtimeChart();
   });
 }
 
 function clearRealtimeChart() {
+  if (!realtimeChart) return;
+
   realtimeChart.data.labels = [];
   realtimeChart.data.datasets[0].data = [];
   realtimeChart.data.datasets[1].data = [];
@@ -405,9 +440,8 @@ function clearRealtimeChart() {
 listenRealtimeHistory();
 
 // =====================================================
-// 13. GOOGLE SHEET - DATA HISTORIS
+// GOOGLE SHEET - DATA HISTORIS
 // =====================================================
-
 if (loadHistoryBtn) {
   loadHistoryBtn.addEventListener("click", () => {
     loadHistoricalData();
@@ -441,8 +475,12 @@ async function loadHistoricalData() {
     GOOGLE_SCRIPT_URL +
     `?mode=range&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&group=${encodeURIComponent(group)}`;
 
+  console.log("Google Sheet URL:", url);
+
   try {
     const result = await loadJsonp(url);
+
+    console.log("Google Sheet result:", result);
 
     if (result.status !== "success") {
       throw new Error(result.message || "Gagal mengambil data.");
@@ -459,6 +497,8 @@ async function loadHistoricalData() {
     }
 
   } catch (error) {
+    console.error("Google Sheet error:", error);
+
     if (historyStatus) {
       historyStatus.textContent = "Gagal mengambil data: " + error.message;
     }
@@ -467,14 +507,17 @@ async function loadHistoricalData() {
   }
 }
 
-// Load default data hari ini setelah halaman dibuka
-loadHistoricalData();
+// Load default data hari ini saat halaman dibuka
+if (historyChart) {
+  loadHistoricalData();
+}
 
 // =====================================================
-// 14. UPDATE CHART HISTORIS
+// UPDATE CHART HISTORIS GOOGLE SHEET
 // =====================================================
-
 function updateHistoryChart(rows) {
+  if (!historyChart) return;
+
   const labels = rows.map(row => row.bucket || "");
   const avgVolume = rows.map(row => toNumber(row.avg_volume_percent, 0));
   const maxVolume = rows.map(row => toNumber(row.max_volume_percent, 0));
@@ -517,11 +560,13 @@ function updateHistoryTable(rows) {
 }
 
 function clearHistory() {
-  historyChart.data.labels = [];
-  historyChart.data.datasets[0].data = [];
-  historyChart.data.datasets[1].data = [];
-  historyChart.data.datasets[2].data = [];
-  historyChart.update();
+  if (historyChart) {
+    historyChart.data.labels = [];
+    historyChart.data.datasets[0].data = [];
+    historyChart.data.datasets[1].data = [];
+    historyChart.data.datasets[2].data = [];
+    historyChart.update();
+  }
 
   if (historyTableBody) {
     historyTableBody.innerHTML = `
@@ -533,13 +578,14 @@ function clearHistory() {
 }
 
 // =====================================================
-// 15. JSONP HELPER UNTUK GOOGLE APPS SCRIPT
+// JSONP HELPER UNTUK GOOGLE APPS SCRIPT
 // =====================================================
-
 function loadJsonp(url) {
   return new Promise((resolve, reject) => {
     const callbackName =
       "jsonpCallback_" + Date.now() + "_" + Math.floor(Math.random() * 100000);
+
+    const script = document.createElement("script");
 
     window[callbackName] = function(data) {
       resolve(data);
@@ -548,7 +594,6 @@ function loadJsonp(url) {
     };
 
     const separator = url.includes("?") ? "&" : "?";
-    const script = document.createElement("script");
 
     script.src =
       url +
@@ -569,9 +614,8 @@ function loadJsonp(url) {
 }
 
 // =====================================================
-// 16. HELPER FORMAT DATA
+// HELPER FORMAT DATA
 // =====================================================
-
 function formatCm(value) {
   if (value === null || value === undefined || value === "") {
     return "ERROR";
