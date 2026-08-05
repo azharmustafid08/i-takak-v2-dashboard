@@ -36,8 +36,14 @@ const database = getDatabase(app);
 // =====================================================
 // ELEMENT
 // =====================================================
+//const volumeValue = document.getElementById("volumeValue");
+//const volumeBar = document.getElementById("volumeBar");
 const volumeValue = document.getElementById("volumeValue");
-const volumeBar = document.getElementById("volumeBar");
+const circleProgress = document.getElementById("circleProgress");
+const volumeStatusText = document.getElementById("volumeStatusText");
+const plasticWeight = document.getElementById("plasticWeight");
+const weightStatus = document.getElementById("weightStatus");
+
 const onlineStatus = document.getElementById("onlineStatus");
 const lastSeen = document.getElementById("lastSeen");
 const avgDistance = document.getElementById("avgDistance");
@@ -93,6 +99,44 @@ const realtimeChart = new Chart(
     }
   }
 );
+
+// circle
+//
+function updateCircleProgress(volume) {
+  const safeVolume = Math.max(0, Math.min(100, Number(volume) || 0));
+  const degree = safeVolume * 3.6;
+
+  let progressColor = "#2f9e44";
+  let badgeClass = "normal";
+  let statusText = "Normal";
+
+  if (safeVolume >= 90) {
+    progressColor = "#dc2626";
+    badgeClass = "full";
+    statusText = "Penuh";
+  } else if (safeVolume >= 75) {
+    progressColor = "#d97706";
+    badgeClass = "warning";
+    statusText = "Hampir Penuh";
+  }
+
+  circleProgress.style.background =
+    `conic-gradient(${progressColor} ${degree}deg, #dce7dc ${degree}deg)`;
+
+  volumeValue.textContent = safeVolume.toFixed(0) + "%";
+
+  volumeStatusText.textContent = statusText;
+  volumeStatusText.className = `badge ${badgeClass}`;
+}
+
+// estimasi berat sampah
+function estimatePlasticWeight(volumePercent) {
+  const maxWeightKg = 18; 
+  const estimated = (Number(volumePercent) / 100) * maxWeightKg;
+  return estimated.toFixed(1) + " kg";
+}
+
+
 
 // =====================================================
 // CHART HISTORY
@@ -157,18 +201,19 @@ function updateLatestCards(data) {
   const volume = Number(data.volume_percent || 0);
   const distance = Number(data.average_distance_cm || 0);
 
-  volumeValue.textContent = volume.toFixed(1) + "%";
-  volumeBar.style.width = Math.max(0, Math.min(100, volume)) + "%";
+  updateCircleProgress(volume);
+
+  plasticWeight.textContent = estimatePlasticWeight(volume);
 
   if (volume >= 90) {
-    volumeValue.className = "full";
-    volumeBar.style.background = "#d62828";
+    weightStatus.textContent = "Penuh";
+    weightStatus.className = "badge full";
   } else if (volume >= 75) {
-    volumeValue.className = "warning";
-    volumeBar.style.background = "#e76f51";
+    weightStatus.textContent = "Hampir Penuh";
+    weightStatus.className = "badge warning";
   } else {
-    volumeValue.className = "";
-    volumeBar.style.background = "#2a9d8f";
+    weightStatus.textContent = "Normal";
+    weightStatus.className = "badge normal";
   }
 
   avgDistance.textContent = distance.toFixed(2) + " cm";
