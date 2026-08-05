@@ -3,7 +3,6 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
   <title>Dashboard i-TAKAK V2</title>
 
   <link rel="stylesheet" href="style.css" />
@@ -11,87 +10,129 @@
 </head>
 <body>
   <div class="container">
-    <header>
-      <h1>Dashboard i-TAKAK V2</h1>
-      <p>Monitoring volume bak sampah botol plastik berbasis ESP32, Firebase, Google Sheet, dan GitHub Pages</p>
-    </header>
-
-    <section class="status-grid">
-      <div class="card main-card">
-        <h3>Volume Bak Sampah</h3>
-        <p id="volumeValue">--%</p>
-        <div class="progress">
-          <div id="volumeBar"></div>
+    <!-- HEADER -->
+    <header class="top-header">
+      <div class="brand-left">
+        <img src="logo-itakak.png" alt="Logo i-TAKAK" class="logo-itakak" />
+        <div class="header-title">
+          <h1>i-TAKAK Dashboard</h1>
+          <p>Monitoring Volume Bak Sampah Botol Plastik</p>
         </div>
       </div>
 
-      <div class="card">
+      <div class="brand-right">
+        <img src="logo-unram.png" alt="Logo Universitas Mataram" class="logo-unram" />
+      </div>
+    </header>
+
+    <!-- STATUS UTAMA -->
+    <section class="dashboard-grid">
+      <!-- CARD VOLUME -->
+      <div class="card card-volume">
+        <h3>Fill Level</h3>
+
+        <div class="circle-progress-wrapper">
+          <div class="circle-progress" id="circleProgress">
+            <div class="circle-inner">
+              <span id="volumeValue">0%</span>
+              <small>Fill Level</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="volume-status-box">
+          <span id="volumeStatusText" class="badge normal">Normal</span>
+        </div>
+      </div>
+
+      <!-- CARD INFORMASI -->
+      <div class="card info-card">
+        <h3>Total Plastic Waste</h3>
+        <p class="big-info" id="plasticWeight">--</p>
+        <span id="weightStatus" class="badge normal">Normal</span>
+      </div>
+
+      <div class="card info-card">
         <h3>Status Perangkat</h3>
-        <p id="onlineStatus">--</p>
+        <p class="big-info" id="onlineStatus">--</p>
         <small id="lastSeen">Last seen: --</small>
       </div>
 
-      <div class="card">
-        <h3>Rata-rata Jarak</h3>
-        <p id="avgDistance">-- cm</p>
-      </div>
-
-      <div class="card">
+      <div class="card info-card">
         <h3>Relay</h3>
-        <p id="relayStatus">--</p>
+        <p class="big-info" id="relayStatus">--</p>
+        <small>Kontrol indikator penuh</small>
       </div>
     </section>
 
-    <section class="info-grid">
-      <div class="info-box">
-        <strong>Sensor 1:</strong> <span id="sensor1Value">-- cm</span>
+    <!-- INFO RINGKAS -->
+    <section class="quick-info-grid">
+      <div class="quick-info-card">
+        <span class="quick-label">Sensor 1</span>
+        <strong id="sensor1Value">-- cm</strong>
       </div>
 
-      <div class="info-box">
-        <strong>Sensor 2:</strong> <span id="sensor2Value">-- cm</span>
+      <div class="quick-info-card">
+        <span class="quick-label">Sensor 2</span>
+        <strong id="sensor2Value">-- cm</strong>
       </div>
 
-      <div class="info-box">
-        <strong>Update:</strong> <span id="timestampValue">--</span>
+      <div class="quick-info-card">
+        <span class="quick-label">Rata-rata Jarak</span>
+        <strong id="avgDistance">-- cm</strong>
       </div>
 
-      <div class="info-box">
-        <strong>Device ID:</strong> <span id="deviceIdValue">--</span>
+      <div class="quick-info-card">
+        <span class="quick-label">Update Terakhir</span>
+        <strong id="timestampValue">--</strong>
+      </div>
+
+      <div class="quick-info-card">
+        <span class="quick-label">Device ID</span>
+        <strong id="deviceIdValue">--</strong>
       </div>
     </section>
 
+    <!-- GRAFIK REALTIME -->
     <section class="panel">
-      <h2>Grafik 100 Data Terakhir</h2>
-      <p>Grafik cepat dari Firebase history hari ini.</p>
+      <div class="panel-head">
+        <h2>Volume Bak Sampah - 100 Data Terakhir</h2>
+        <p>Data realtime dari Firebase</p>
+      </div>
       <canvas id="realtimeChart"></canvas>
     </section>
 
+    <!-- GRAFIK HISTORIS -->
     <section class="panel">
-      <h2>Grafik Historis Volume</h2>
-      <p>Atur rentang data dan agregasi grafik berdasarkan jam, hari, minggu, atau bulan.</p>
+      <div class="panel-head">
+        <h2>Grafik Historis Volume</h2>
+        <p>Data historis dari Google Sheet</p>
+      </div>
 
-      <div class="form-row">
-        <label>
-          Mulai
+      <div class="filter-row">
+        <div class="filter-item">
+          <label for="startDate">Mulai</label>
           <input type="date" id="startDate" />
-        </label>
+        </div>
 
-        <label>
-          Selesai
+        <div class="filter-item">
+          <label for="endDate">Selesai</label>
           <input type="date" id="endDate" />
-        </label>
+        </div>
 
-        <label>
-          Agregasi
+        <div class="filter-item">
+          <label for="groupSelect">Agregasi</label>
           <select id="groupSelect">
             <option value="hour">Per Jam</option>
             <option value="day">Per Hari</option>
             <option value="week">Per Minggu</option>
             <option value="month">Per Bulan</option>
           </select>
-        </label>
+        </div>
 
-        <button id="loadHistoryBtn">Tampilkan</button>
+        <div class="filter-item button-wrap">
+          <button id="loadHistoryBtn">Tampilkan</button>
+        </div>
       </div>
 
       <p id="historyStatus">Belum ada data historis dimuat.</p>
@@ -119,7 +160,7 @@
     </section>
 
     <footer>
-      <p>i-TAKAK V2 | Monitoring jarak jauh bak sampah botol plastik</p>
+      <p>i-TAKAK V2 - Universitas Mataram</p>
     </footer>
   </div>
 
