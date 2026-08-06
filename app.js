@@ -30,7 +30,7 @@ const OFFLINE_THRESHOLD_MS = 30000;
 
 // Estimasi berat maksimum plastik dalam bak.
 // Ini hanya estimasi dari persentase volume jika belum memakai loadcell.
-const MAX_PLASTIC_WEIGHT_KG = 18;
+const MAX_PLASTIC_WEIGHT_KG = 1;
 
 // Path Firebase yang digunakan program ESP32 V2
 const FIREBASE_LATEST_PATH = `itakak_v2/devices/${DEVICE_ID}/latest`;
